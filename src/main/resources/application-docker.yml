@@ -1,0 +1,52 @@
+# -----------------------------------------------------------------------------
+# Spring Boot profile: docker
+# Configuration tailored for running inside Docker Compose.
+# -----------------------------------------------------------------------------
+
+spring:
+  datasource:
+    url: jdbc:postgresql://${DB_HOST:db}:${DB_PORT:5432}/${DB_NAME:customers}
+    username: ${DB_USER:customer}
+    password: ${DB_PASSWORD:customer}
+    driver-class-name: org.postgresql.Driver
+  jpa:
+    hibernate:
+      ddl-auto: none
+    properties:
+      hibernate:
+        dialect: org.hibernate.dialect.PostgreSQLDialect
+
+  # Make startup fail fast if the DB is unavailable, but allow retry attempts
+  sql:
+    init:
+      mode: never
+
+# Base URL for the external CRM system (here: the mock CRM container)
+crm:
+  base-url: http://${CRM_HOST:crm-mock}:${CRM_PORT:8080}
+
+# Camel / Spring Boot tuning for containerized environment
+camel:
+  springboot:
+    # Graceful shutdown timeout (seconds)
+    shutdownTimeout: 10
+
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health,info,metrics
+  endpoint:
+    health:
+      probes:
+        enabled: true
+      show-details: "when_authorized"
+
+logging:
+  pattern:
+    console: "%d{yyyy-MM-dd HH:mm:ss.SSS} %-5level [%thread] %logger{36} - %msg%n"
+  level:
+    root: INFO
+    org.apache.camel: INFO
+    # Adjust the base package to match the actual application package
+    com.example.customersync: DEBUG

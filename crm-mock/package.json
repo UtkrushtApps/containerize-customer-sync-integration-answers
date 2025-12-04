@@ -1,0 +1,23 @@
+{
+  "name": "crm-mock-service",
+  "version": "1.0.0",
+  "description": "Mock CRM HTTP service that randomly fails to simulate a flaky external dependency.",
+  "main": "server.js",
+  "scripts": {
+    "start": "node server.js"
+  },
+  "keywords": [
+    "crm",
+    "mock",
+    "http",
+    "service",
+    "camel",
+    "integration"
+  ],
+  "author": "",
+  "license": "MIT",
+  "dependencies": {
+    "express": "^4.19.2",
+    "morgan": "^1.10.0"
+  }
+}

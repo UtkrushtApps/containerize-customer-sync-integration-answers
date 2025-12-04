@@ -1,0 +1,99 @@
+version: "3.9"
+
+services:
+  # -------------------------------------------------------------------------
+  # PostgreSQL database used as the source of customer data
+  # -------------------------------------------------------------------------
+  db:
+    image: postgres:16-alpine
+    container_name: customer-sync-db
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: customers
+      POSTGRES_USER: customer
+      POSTGRES_PASSWORD: customer
+    ports:
+      # Expose for local debugging / inspection (psql, DB tools)
+      - "5432:5432"
+    volumes:
+      - db-data:/var/lib/postgresql/data
+      - ./db/init:/docker-entrypoint-initdb.d
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U $$POSTGRES_USER -d $$POSTGRES_DB || exit 1"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+      start_period: 30s
+
+  # -------------------------------------------------------------------------
+  # Mock CRM HTTP service that randomly fails to simulate a flaky dependency
+  # -------------------------------------------------------------------------
+  crm-mock:
+    build: ./crm-mock
+    container_name: customer-sync-crm-mock
+    restart: unless-stopped
+    environment:
+      PORT: 8080
+      # 0.0 = never fail, 1.0 = always fail. 0.3 = 30% of requests fail.
+      FAILURE_RATE: 0.3
+    ports:
+      # Expose for manual testing with curl/Postman from host
+      - "8081:8080"
+    healthcheck:
+      # Use node inside the container to ping the health endpoint
+      test:
+        [
+          "CMD-SHELL",
+          "node -e \"require('http').get('http://localhost:8080/health', r => process.exit(r.statusCode === 200 ? 0 : 1)).on('error', () => process.exit(1));\"",
+        ]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+      start_period: 10s
+
+  # -------------------------------------------------------------------------
+  # Camel + Spring Boot Customer Sync application
+  # -------------------------------------------------------------------------
+  customer-sync-app:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: customer-sync-app
+    restart: unless-stopped
+    depends_on:
+      db:
+        condition: service_healthy
+      crm-mock:
+        condition: service_healthy
+    environment:
+      # Activate Docker-specific profile
+      SPRING_PROFILES_ACTIVE: docker
+
+      # Database connectivity (use Docker service names, not localhost)
+      DB_HOST: db
+      DB_PORT: 5432
+      DB_NAME: customers
+      DB_USER: customer
+      DB_PASSWORD: customer
+
+      # CRM mock connectivity
+      CRM_HOST: crm-mock
+      CRM_PORT: 8080
+
+      # JVM tuning (can be overridden as needed)
+      JAVA_OPTS: "-Xms256m -Xmx512m -XX:+UseContainerSupport -XX:MaxRAMPercentage=75.0"
+
+    ports:
+      # Expose Spring Boot actuator / HTTP endpoints to host
+      - "8080:8080"
+
+    healthcheck:
+      # Relay health via Spring Boot actuator health endpoint
+      test: ["CMD-SHELL", "curl -fsS http://localhost:8080/actuator/health || exit 1"]
+      interval: 15s
+      timeout: 5s
+      retries: 10
+      start_period: 30s
+
+volumes:
+  db-data:
